@@ -1,0 +1,44 @@
+version: '3'
+vars:
+  APP_NAME: "thaw"
+  BUILD_TARGET: "./{{.APP_NAME}}"
+tasks:
+  run:
+    cmds:
+      - go run main.go
+    silent: true
+  check:
+    cmds:
+      - staticcheck ./...
+  tidy:
+    cmds:
+      - go mod tidy
+  lint:
+    deps: [check, tidy]
+  build:
+    requires:
+      vars: [BUILD_TARGET]
+    cmds:
+      - go build -v -o "{{.BUILD_TARGET}}"
+    silent: true
+  test:
+    cmds:
+      - go test ./...
+    silent: true
+  install:
+    cmds:
+      - go install
+    silent: true
+  uninstall:
+    cmds:
+      - rm -f ${GOBIN}/{{.APP_NAME}}
+    silent: true
+  clean:
+    requires:
+      vars: [BUILD_TARGET]
+    cmds:
+      - rm -rf {{.BUILD_TARGET}}
+  updates:
+    # {{` `}} is to escape go templating from go task
+    cmds:
+      - "go list -u -f '{{`{{if (and (not (or .Main .Indirect)) .Update)}}{{.Path}}: {{.Version}} -> {{.Update.Version}}{{end}}`}}' -m all 2> /dev/null"

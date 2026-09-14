@@ -1,0 +1,8 @@
+thaw
+tmp/
+# nix build symlinks
+result
+result-*
+# Captured output of the scripts thaw replaces. Kept on disk so the first
+# check survives a reboot, not committed: it is a measurement, not source.
+baseline/
