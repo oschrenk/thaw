@@ -16,6 +16,7 @@ import (
 	"github.com/oschrenk/thaw/internal/diff"
 	"github.com/oschrenk/thaw/internal/flake"
 	"github.com/oschrenk/thaw/internal/lock"
+	"github.com/oschrenk/thaw/internal/news"
 	"github.com/oschrenk/thaw/internal/opts"
 	"github.com/oschrenk/thaw/internal/pkgs"
 	"github.com/oschrenk/thaw/internal/render"
@@ -165,7 +166,16 @@ func newRoot() (*cobra.Command, *int) {
 	}
 	subjectsCmd.Flags().BoolVar(&o.asJSON, "json", false, "machine-readable output")
 
-	root.AddCommand(packagesCmd, optionsCmd, subjectsCmd)
+	newsCmd := &cobra.Command{
+		Use:   "news [flake]",
+		Short: "which home-manager news entries an update brings",
+		Args:  cobra.MaximumNArgs(1),
+		RunE:  prepare("news", false),
+	}
+	common(newsCmd)
+	forFlag(newsCmd)
+
+	root.AddCommand(packagesCmd, optionsCmd, subjectsCmd, newsCmd)
 	return root, code
 }
 
@@ -234,6 +244,48 @@ func execute(o *options) (int, error) {
 			return 0, err
 		}
 		subs = []subject.Subject{one}
+	}
+
+	if o.sub == "news" {
+		// News rides on one input, home-manager unless --input says otherwise,
+		// and reads it through the darwin hosts that embed the module.
+		name := o.input
+		if name == "" {
+			name = "home-manager"
+		}
+		var in *revs.Input
+		for i := range report.Inputs {
+			if report.Inputs[i].Name == name {
+				in = &report.Inputs[i]
+			}
+		}
+		if in == nil {
+			return 0, fmt.Errorf("no input named %q in flake.lock", name)
+		}
+		if in.Err != nil {
+			return 0, in.Err
+		}
+		var darwin []subject.Subject
+		for _, sub := range subs {
+			if sub.Kind == subject.DarwinHost {
+				darwin = append(darwin, sub)
+			}
+		}
+		if len(darwin) == 0 {
+			return 0, fmt.Errorf("no darwinConfigurations here, so no home-manager users to read news for")
+		}
+		if !in.Moved() || in.Ref == "" {
+			fmt.Printf("%s did not move, so it brings no news\n", name)
+			return 0, nil
+		}
+		nr, err := news.Build(ctx, runner, o.dir, darwin, in.Name, in.Locked, in.Upstream, in.Ref)
+		if err != nil {
+			return 0, err
+		}
+		if o.asJSON {
+			return 0, emit(nr)
+		}
+		return 0, render.News(os.Stdout, nr, style)
 	}
 
 	if o.input != "" {
